@@ -1,0 +1,14 @@
+﻿| Défaut | Emplacement | Principe SOLID violé |
+|---|---|---|
+| `GestionResidence` fait tout : inscription, attribution, cycle de vie du bail, relances, rapport et notifications. Elle a plusieurs raisons de changer sans rapport entre elles | `GestionResidence` (classe entière) | **S** |
+| `Bail` porte les données du bail et met en forme sa propre quittance | `Bail.genererQuittance` | **S** |
+| Un `if` sur le profil pour chaque règle (remise, solvabilité, dépôt, frais de dossier, pénalité, préavis) : un nouveau profil oblige à modifier plusieurs endroits | `CalculateurLoyer.calculerLoyer`, `GestionResidence.attribuerLogement`, `GestionResidence.payerLoyer`, `GestionResidence.donnerPreavis` | **O** |
+| La création des logements est dupliquée dans deux `switch` : ajouter un type oblige à modifier les deux | `Residence.initialiser`, `GestionResidence.ajouterLogement` | **O** |
+| Le calcul du loyer dépend de conditions sur le type de logement et de booléens pour les options : un nouveau type ou une nouvelle option oblige à modifier le calcul existant | `CalculateurLoyer.calculerLoyer`, `CalculateurLoyer.calculerCharges` | **O** |
+| Le choix du canal de notification est dupliqué : ajouter un canal oblige à modifier les notifications et les relances | `GestionResidence.notifier`, `GestionResidence.relancerImpayes` | **O** |
+| `Colocation` refuse `loger` et `liberer` en levant une exception : elle ne peut pas remplacer un `Logement` pour ces opérations, ce qui oblige le client à tester son type avec `instanceof` | `Colocation.loger`, `Colocation.liberer` ; `GestionResidence.attribuerLogement`, `GestionResidence.sortir`, `GestionResidence.annulerBail` | **L** |
+| Le rapport doit ignorer les exceptions de `getSurfaceBalcon` : cette opération du contrat commun n'est pas utilisable sur tous les logements | `GestionResidence.genererRapport`, `Studio.getSurfaceBalcon`, `Colocation.getSurfaceBalcon` | **L** |
+| `ILogement` impose les méthodes de colocation aux logements individuels : ils lèvent des exceptions et `T1.getColocataires` renvoie `null` | `ILogement.ajouterColocataire`, `ILogement.retirerColocataire`, `ILogement.getColocataires` ; implémentations dans `Studio`, `T1`, `T2` | **I** |
+| `ILogement` impose les capacités de balcon et d'entretien même aux logements qui n'en disposent pas | `ILogement.getSurfaceBalcon`, `ILogement.nettoyerPartiesCommunes` ; implémentations dans `Studio`, `T1`, `T2`, `Colocation` | **I** |
+| `GestionResidence` dépend directement du singleton `Database` au lieu de recevoir une abstraction de persistance | Champ `GestionResidence.db`, `Database.getInstance` | **D** |
+| `GestionResidence` construit directement son calculateur et les services SMS et courrier, et appelle le service email statique au lieu de recevoir ses dépendances par injection | Champ `GestionResidence.calculateur`, `GestionResidence.notifier`, `GestionResidence.relancerImpayes` | **D** |
