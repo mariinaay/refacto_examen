@@ -3,7 +3,18 @@ package fr.efrei.residence;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CourrierService {
+public class CourrierService implements CanalNotification {
+
+    @Override
+    public void notifier(Etudiant etudiant, String sujet, String message) {
+        imprimerEtPoster(etudiant.getNomComplet(), etudiant.getAdresse(), sujet, message);
+    }
+
+    @Override
+    public void relancer(Bail bail) {
+        notifier(bail.getEtudiant(), "Relance loyer impayé",
+                "Il reste " + Utils.euros(bail.soldeDu) + " à régler sur le bail " + bail.getId() + ".");
+    }
 
     public static final double PRIX_TIMBRE = 1.29;
     public static double totalAffranchissement = 0;

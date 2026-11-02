@@ -46,6 +46,12 @@ public class Residence {
         }
     }
 
+    public static List<Logement> logementsDuType(TypeLogement type) {
+        return logements.stream()
+                .filter(logement -> logement.getType() == type)
+                .toList();
+    }
+
     public static Logement trouver(String numero) {
         for (Logement l : logements) {
             if (l.getNumero().equals(numero)) return l;

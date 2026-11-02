@@ -4,6 +4,8 @@ import java.util.Set;
 
 public class CalculateurLoyer {
 
+    private final AssembleurLoyer assembleur = new AssembleurLoyer();
+
     public static final double TARIF_M2_STUDIO = 14;
     public static final double LOYER_MINIMUM_STUDIO = 350;
     public static final double TARIF_M2_T1 = 13;
@@ -27,24 +29,9 @@ public class CalculateurLoyer {
      * Loyer mensuel hors charges, options comprises, remise déduite.
      */
     public double calculerLoyer(Logement l, Profil profil, int echelon, Set<Option> options) {
-        StrategieLogement strategie = StrategiesLogement.choisir(l.getType());
-        double loyer = strategie.loyerBase(l);
-
-        if (l.isMeuble()) loyer = loyer * COEFFICIENT_MEUBLE;
-        if (l.getEtage() == Logement.REZ_DE_CHAUSSEE) loyer = loyer * COEFFICIENT_REZ_DE_CHAUSSEE;
-
-        // options
-        if (options.contains(Option.MENAGE)) {
-            loyer = loyer * strategie.coefficientMenage();
-        }
-        if (options.contains(Option.PARKING)) loyer = loyer + PRIX_PARKING;
-        if (options.contains(Option.LAVERIE)) loyer = loyer + PRIX_LAVERIE;
-        if (options.contains(Option.FIBRE)) loyer = loyer + strategie.prixFibre();
-        if (options.contains(Option.ASSURANCE)) loyer = loyer + PRIX_ASSURANCE;
-
-        loyer = StrategiesProfil.choisir(profil).appliquerRemise(loyer, echelon);
-
-        return Utils.arrondir(loyer);
+        Loyer loyer = assembleur.assembler(l, options);
+        double montant = StrategiesProfil.choisir(profil).appliquerRemise(loyer.montant(), echelon);
+        return Utils.arrondir(montant);
     }
 
     public double calculerCharges(Logement l) {

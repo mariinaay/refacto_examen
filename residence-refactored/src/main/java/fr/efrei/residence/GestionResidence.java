@@ -18,6 +18,7 @@ public class GestionResidence {
     private Database db = Database.getInstance();
     private CalculateurLoyer calculateur = new CalculateurLoyer();
     private final LogementFactory fabriqueLogements = new LogementFactory();
+    private final NotificationFactory fabriqueNotifications = new NotificationFactory();
 
     // ------------------------------------------------------------------ étudiants
 
@@ -88,8 +89,7 @@ public class GestionResidence {
         Logement choisi = null;
         double loyer = 0;
         double charges = 0;
-        for (Logement l : Residence.logements) {
-            if (l.getType() != typeSouhaite) continue;
+        for (Logement l : Residence.logementsDuType(typeSouhaite)) {
             if (!l.estLibre()) continue;
             if (e.isPmr() && !l.estAccessiblePMR()) continue;
 
@@ -275,24 +275,7 @@ public class GestionResidence {
         for (Bail b : db.tousLesBaux()) {
             if (b.soldeDu <= 0) continue;
             if (b.getStatut() == StatutBail.ANNULE) continue;
-            Etudiant e = b.getEtudiant();
-            Canal canal = e.getCanalPrefere();
-            switch (canal) {
-                case EMAIL:
-                    EmailService.envoyer(e.getEmail(), "RELANCE - loyer impayé",
-                            "Bonjour " + e.getPrenom() + ", il reste " + Utils.euros(b.soldeDu) + " à régler sur le bail " + b.getId() + ".");
-                    break;
-                case SMS:
-                    new SmsService().envoyerSms(e.getTelephone(),
-                            "Campus Vert : " + Utils.euros(b.soldeDu) + " impayés sur " + b.getId());
-                    break;
-                case COURRIER:
-                    new CourrierService().imprimerEtPoster(e.getNomComplet(), e.getAdresse(), "Relance loyer impayé",
-                            "Il reste " + Utils.euros(b.soldeDu) + " à régler sur le bail " + b.getId() + ".");
-                    break;
-                default:
-                    System.out.println("Canal inconnu " + canal);
-            }
+            fabriqueNotifications.creer(b.getEtudiant().getCanalPrefere()).relancer(b);
         }
     }
 
@@ -349,18 +332,10 @@ public class GestionResidence {
 
     private void notifier(Etudiant e, String sujet, String message) {
         Canal canal = e.getCanalPrefere();
-        if (canal == Canal.EMAIL) {
-            EmailService.envoyer(e.getEmail(), sujet, message);
-        } else if (canal == Canal.SMS) {
-            SmsService sms = new SmsService();
-            sms.envoyerSms(e.getTelephone(), sujet + " - " + message);
-        } else if (canal == Canal.COURRIER) {
-            CourrierService courrier = new CourrierService();
-            courrier.imprimerEtPoster(e.getNomComplet(), e.getAdresse(), sujet, message);
-        }
+        fabriqueNotifications.creer(canal).notifier(e, sujet, message);
         // les internationaux reçoivent toujours un email en plus (demande de l'administration)
         if (StrategiesProfil.choisir(e.getProfil()).emailSupplementaire() && canal != Canal.EMAIL) {
-            EmailService.envoyer(e.getEmail(), "[EN] " + sujet, message);
+            fabriqueNotifications.creer(Canal.EMAIL).notifier(e, "[EN] " + sujet, message);
         }
     }
 }
