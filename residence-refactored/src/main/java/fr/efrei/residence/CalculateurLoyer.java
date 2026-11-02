@@ -19,9 +19,6 @@ public class CalculateurLoyer {
     public static final double PRIX_LAVERIE = 12;
     public static final double PRIX_FIBRE = 20;
     public static final double PRIX_ASSURANCE = 9;
-    public static final double REMISE_PAR_ECHELON = 0.05;
-    public static final double REMISE_BOURSIER_MAXIMALE = 0.30;
-    public static final double COEFFICIENT_ALTERNANT = 0.90;
     public static final double CHARGES_COLOCATION = 25;
     public static final double CHARGES_INDIVIDUELLES = 35;
 
@@ -30,51 +27,27 @@ public class CalculateurLoyer {
      * Loyer mensuel hors charges, options comprises, remise déduite.
      */
     public double calculerLoyer(Logement l, Profil profil, int echelon, Set<Option> options) {
-        // loyer de base selon le type
-        double loyer;
-        if (l.getType() == TypeLogement.STUDIO) {
-            loyer = l.getSurface() * TARIF_M2_STUDIO;
-            if (loyer < LOYER_MINIMUM_STUDIO) loyer = LOYER_MINIMUM_STUDIO;
-        } else if (l.getType() == TypeLogement.T1) {
-            loyer = l.getSurface() * TARIF_M2_T1 + FORFAIT_T1;
-        } else if (l.getType() == TypeLogement.T2) {
-            loyer = l.getSurface() * TARIF_M2_T2 + FORFAIT_T2;
-        } else if (l.getType() == TypeLogement.COLOCATION) {
-            loyer = l.getSurface() * TARIF_M2_COLOCATION / l.getNombrePlaces();
-        } else {
-            throw new IllegalArgumentException("Type de logement inconnu : " + l.getType());
-        }
+        StrategieLogement strategie = StrategiesLogement.choisir(l.getType());
+        double loyer = strategie.loyerBase(l);
 
         if (l.isMeuble()) loyer = loyer * COEFFICIENT_MEUBLE;
         if (l.getEtage() == Logement.REZ_DE_CHAUSSEE) loyer = loyer * COEFFICIENT_REZ_DE_CHAUSSEE;
 
         // options
         if (options.contains(Option.MENAGE)) {
-            if (l.getType() == TypeLogement.COLOCATION) {
-                loyer = loyer * COEFFICIENT_MENAGE_COLOCATION; // parties communes déjà nettoyées
-            } else {
-                loyer = loyer * COEFFICIENT_MENAGE;
-            }
+            loyer = loyer * strategie.coefficientMenage();
         }
         if (options.contains(Option.PARKING)) loyer = loyer + PRIX_PARKING;
         if (options.contains(Option.LAVERIE)) loyer = loyer + PRIX_LAVERIE;
-        if (options.contains(Option.FIBRE) && l.getType() != TypeLogement.COLOCATION) loyer = loyer + PRIX_FIBRE; // fibre incluse en coloc
+        if (options.contains(Option.FIBRE)) loyer = loyer + strategie.prixFibre();
         if (options.contains(Option.ASSURANCE)) loyer = loyer + PRIX_ASSURANCE;
 
-        // remise selon le profil
-        if (profil == Profil.BOURSIER) {
-            double taux = echelon * REMISE_PAR_ECHELON;
-            if (taux > REMISE_BOURSIER_MAXIMALE) taux = REMISE_BOURSIER_MAXIMALE;
-            loyer = loyer * (1 - taux);
-        } else if (profil == Profil.ALTERNANT) {
-            loyer = loyer * COEFFICIENT_ALTERNANT;
-        }
+        loyer = StrategiesProfil.choisir(profil).appliquerRemise(loyer, echelon);
 
         return Utils.arrondir(loyer);
     }
 
     public double calculerCharges(Logement l) {
-        if (l.getType() == TypeLogement.COLOCATION) return CHARGES_COLOCATION;
-        return CHARGES_INDIVIDUELLES;
+        return StrategiesLogement.choisir(l.getType()).charges();
     }
 }

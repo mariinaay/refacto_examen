@@ -7,19 +7,8 @@ import java.util.List;
 
 public class GestionResidence {
 
-    public static final int ECHELON_BOURSE_MINIMUM = 0;
-    public static final int ECHELON_BOURSE_MAXIMUM = 7;
     public static final int PLACES_COLOCATION_MINIMUM = 2;
-    public static final int MULTIPLICATEUR_SOLVABILITE_ALTERNANT = 2;
-    public static final int MULTIPLICATEUR_SOLVABILITE_STANDARD = 3;
-    public static final int MOIS_CAUTION_INTERNATIONAL = 2;
-    public static final double FRAIS_DOSSIER_INTERNATIONAL = 150;
-    public static final double FRAIS_DOSSIER_STANDARD = 100;
     public static final int JOUR_ECHEANCE_LOYER = 5;
-    public static final double TAUX_PENALITE_RETARD = 0.05;
-    public static final double PENALITE_MINIMALE = 10;
-    public static final int PREAVIS_REDUIT_JOURS = 15;
-    public static final int PREAVIS_STANDARD_JOURS = 30;
     public static final int DELAI_RESTITUTION_CAUTION_JOURS = 30;
     public static final double POURCENTAGE = 100.0;
 
@@ -51,12 +40,9 @@ public class GestionResidence {
             System.out.println("Inscription refusée : profil inconnu " + profil);
             return null;
         }
-        if ((profil == Profil.BOURSIER) && (echelonBourse < ECHELON_BOURSE_MINIMUM || echelonBourse > ECHELON_BOURSE_MAXIMUM)) {
-            System.out.println("Inscription refusée : échelon de bourse invalide");
-            return null;
-        }
-        if ((profil == Profil.INTERNATIONAL) && (telephone == null || !telephone.startsWith("+"))) {
-            System.out.println("Inscription refusée : numéro international (+XX) obligatoire");
+        String erreurProfil = StrategiesProfil.choisir(profil).erreurInscription(echelonBourse, telephone);
+        if (erreurProfil != null) {
+            System.out.println(erreurProfil);
             return null;
         }
         if ((canalPrefere == Canal.SMS) && telephone == null) {
@@ -81,8 +67,8 @@ public class GestionResidence {
             System.out.println("Logement " + numero + " existe déjà");
             return null;
         }
-        if (type == TypeLogement.COLOCATION && param < PLACES_COLOCATION_MINIMUM) {
-            param = PLACES_COLOCATION_MINIMUM;
+        if (type != null) {
+            param = StrategiesLogement.choisir(type).normaliserParametre(param);
         }
         Logement l = fabriqueLogements.creer(type, numero, surface, etage, meuble, param);
         if (l == null) {
@@ -98,6 +84,7 @@ public class GestionResidence {
 
     public Bail attribuerLogement(Etudiant e, TypeLogement typeSouhaite, Set<Option> options, LocalDate dateSignature) {
         System.out.println("--- Attribution d'un " + typeSouhaite + " à " + e.getNomComplet());
+        StrategieProfil strategieProfil = StrategiesProfil.choisir(e.getProfil());
         Logement choisi = null;
         double loyer = 0;
         double charges = 0;
@@ -111,14 +98,7 @@ public class GestionResidence {
             double total = loyerCandidat + chargesCandidat;
 
             // solvabilité
-            boolean solvable;
-            if (e.getProfil() == Profil.BOURSIER) {
-                solvable = true; // garantie Visale
-            } else if (e.getProfil() == Profil.ALTERNANT) {
-                solvable = e.getRessourcesMensuelles() >= total * MULTIPLICATEUR_SOLVABILITE_ALTERNANT;
-            } else {
-                solvable = e.getRessourcesMensuelles() >= total * MULTIPLICATEUR_SOLVABILITE_STANDARD;
-            }
+            boolean solvable = strategieProfil.estSolvable(e.getRessourcesMensuelles(), total);
             if (!solvable) {
                 System.out.println("  " + l.getNumero() + " : ressources insuffisantes (" + Utils.euros(total) + "/mois)");
                 continue;
@@ -147,25 +127,8 @@ public class GestionResidence {
         b.setLoyerHorsCharges(loyer);
         b.setCharges(charges);
 
-        // dépôt de garantie
-        double caution;
-        if (e.getProfil() == Profil.BOURSIER) {
-            caution = 0;
-        } else if (e.getProfil() == Profil.INTERNATIONAL) {
-            caution = loyer * MOIS_CAUTION_INTERNATIONAL;
-        } else {
-            caution = loyer;
-        }
-        b.setCaution(Utils.arrondir(caution));
-
-        // frais de dossier
-        if (e.getProfil() == Profil.BOURSIER) {
-            b.setFraisDossier(0);
-        } else if (e.getProfil() == Profil.INTERNATIONAL) {
-            b.setFraisDossier(FRAIS_DOSSIER_INTERNATIONAL);
-        } else {
-            b.setFraisDossier(FRAIS_DOSSIER_STANDARD);
-        }
+        b.setCaution(Utils.arrondir(strategieProfil.calculerCaution(loyer)));
+        b.setFraisDossier(strategieProfil.fraisDossier());
 
         db.sauvegarderBail(b);
         System.out.println("  Bail " + id + " signé : " + choisi.getNumero() + ", " + Utils.euros(b.getLoyerChargesComprises())
@@ -207,11 +170,8 @@ public class GestionResidence {
         LocalDate echeance = YearMonth.parse(mois).atDay(JOUR_ECHEANCE_LOYER);
         double penalite = 0;
         if (datePaiement.isAfter(echeance)) {
-            if (b.getEtudiant().getProfil() != Profil.BOURSIER) {
-                penalite = b.getLoyerChargesComprises() * TAUX_PENALITE_RETARD;
-                if (penalite < PENALITE_MINIMALE) penalite = PENALITE_MINIMALE;
-                penalite = Utils.arrondir(penalite);
-            }
+            penalite = StrategiesProfil.choisir(b.getEtudiant().getProfil())
+                    .penaliteRetard(b.getLoyerChargesComprises());
         }
         double du = Utils.arrondir(b.getLoyerChargesComprises() + penalite);
         b.paiements.add(new Paiement(mois, datePaiement, montant, penalite, du));
@@ -236,13 +196,7 @@ public class GestionResidence {
             System.out.println("Préavis impossible pour " + idBail);
             return false;
         }
-        int jours;
-        Profil profil = b.getEtudiant().getProfil();
-        if (profil == Profil.BOURSIER || profil == Profil.ALTERNANT) {
-            jours = PREAVIS_REDUIT_JOURS;
-        } else {
-            jours = PREAVIS_STANDARD_JOURS;
-        }
+        int jours = StrategiesProfil.choisir(b.getEtudiant().getProfil()).dureePreavis();
         b.setDateFin(date.plusDays(jours));
         b.setStatut(StatutBail.PREAVIS);
         db.mettreAJourBail(b);
@@ -350,36 +304,24 @@ public class GestionResidence {
     public String genererRapport() {
         String r = "";
         r += "=============== RAPPORT " + Residence.NOM + " ===============" + "\n";
-        int nbStudios = 0, nbStudiosOccupes = 0;
-        int nbT1 = 0, nbT1Occupes = 0;
-        int nbT2 = 0, nbT2Occupes = 0;
-        int nbPlacesColoc = 0, nbPlacesColocOccupees = 0;
+        java.util.Map<TypeLogement, Integer> capacites = new java.util.EnumMap<>(TypeLogement.class);
+        java.util.Map<TypeLogement, Integer> occupations = new java.util.EnumMap<>(TypeLogement.class);
         double surfaceBalcons = 0;
         for (Logement l : Residence.logements) {
-            if (l.getType() == TypeLogement.STUDIO) {
-                nbStudios++;
-                if (!l.estLibre()) nbStudiosOccupes++;
-            } else if (l.getType() == TypeLogement.T1) {
-                nbT1++;
-                if (!l.estLibre()) nbT1Occupes++;
-            } else if (l.getType() == TypeLogement.T2) {
-                nbT2++;
-                if (!l.estLibre()) nbT2Occupes++;
-            } else if (l.getType() == TypeLogement.COLOCATION) {
-                nbPlacesColoc += l.getNombrePlaces();
-                nbPlacesColocOccupees += l.getColocataires().size();
-            }
+            StrategieLogement strategie = StrategiesLogement.choisir(l.getType());
+            capacites.merge(l.getType(), strategie.capacite(l), Integer::sum);
+            occupations.merge(l.getType(), strategie.occupation(l), Integer::sum);
             try {
                 surfaceBalcons += l.getSurfaceBalcon();
             } catch (UnsupportedOperationException ex) {
             }
         }
-        r += "Studios      : " + nbStudiosOccupes + "/" + nbStudios + "\n";
-        r += "T1           : " + nbT1Occupes + "/" + nbT1 + "\n";
-        r += "T2           : " + nbT2Occupes + "/" + nbT2 + "\n";
-        r += "Colocation   : " + nbPlacesColocOccupees + "/" + nbPlacesColoc + " places" + "\n";
-        int total = nbStudios + nbT1 + nbT2 + nbPlacesColoc;
-        int occupes = nbStudiosOccupes + nbT1Occupes + nbT2Occupes + nbPlacesColocOccupees;
+        r += "Studios      : " + occupations.getOrDefault(TypeLogement.STUDIO, 0) + "/" + capacites.getOrDefault(TypeLogement.STUDIO, 0) + "\n";
+        r += "T1           : " + occupations.getOrDefault(TypeLogement.T1, 0) + "/" + capacites.getOrDefault(TypeLogement.T1, 0) + "\n";
+        r += "T2           : " + occupations.getOrDefault(TypeLogement.T2, 0) + "/" + capacites.getOrDefault(TypeLogement.T2, 0) + "\n";
+        r += "Colocation   : " + occupations.getOrDefault(TypeLogement.COLOCATION, 0) + "/" + capacites.getOrDefault(TypeLogement.COLOCATION, 0) + " places\n";
+        int total = capacites.values().stream().mapToInt(Integer::intValue).sum();
+        int occupes = occupations.values().stream().mapToInt(Integer::intValue).sum();
         r += "Occupation   : " + Math.round(occupes * POURCENTAGE / total) + " %" + "\n";
         r += "Balcons      : " + surfaceBalcons + " m²" + "\n";
 
@@ -417,7 +359,7 @@ public class GestionResidence {
             courrier.imprimerEtPoster(e.getNomComplet(), e.getAdresse(), sujet, message);
         }
         // les internationaux reçoivent toujours un email en plus (demande de l'administration)
-        if ((e.getProfil() == Profil.INTERNATIONAL) && canal != Canal.EMAIL) {
+        if (StrategiesProfil.choisir(e.getProfil()).emailSupplementaire() && canal != Canal.EMAIL) {
             EmailService.envoyer(e.getEmail(), "[EN] " + sujet, message);
         }
     }
