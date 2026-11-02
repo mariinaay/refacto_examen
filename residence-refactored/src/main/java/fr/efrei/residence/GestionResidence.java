@@ -5,9 +5,6 @@ import java.util.Set;
 import java.time.YearMonth;
 import java.util.List;
 
-/**
- * Service principal de la résidence : inscriptions, attributions, baux, loyers, préavis, sorties.
- */
 public class GestionResidence {
 
     public static final int ECHELON_BOURSE_MINIMUM = 0;
@@ -31,6 +28,7 @@ public class GestionResidence {
 
     private Database db = Database.getInstance();
     private CalculateurLoyer calculateur = new CalculateurLoyer();
+    private final LogementFactory fabriqueLogements = new LogementFactory();
 
     // ------------------------------------------------------------------ étudiants
 
@@ -83,17 +81,10 @@ public class GestionResidence {
             System.out.println("Logement " + numero + " existe déjà");
             return null;
         }
-        Logement l = null;
-        if (type == TypeLogement.STUDIO) {
-            l = new Studio(numero, surface, etage, meuble);
-        } else if (type == TypeLogement.T1) {
-            l = new T1(numero, surface, etage, meuble);
-        } else if (type == TypeLogement.T2) {
-            l = new T2(numero, surface, etage, meuble, param);
-        } else if (type == TypeLogement.COLOCATION) {
-            if (param < PLACES_COLOCATION_MINIMUM) param = PLACES_COLOCATION_MINIMUM;
-            l = new Colocation(numero, surface, etage, meuble, param);
+        if (type == TypeLogement.COLOCATION && param < PLACES_COLOCATION_MINIMUM) {
+            param = PLACES_COLOCATION_MINIMUM;
         }
+        Logement l = fabriqueLogements.creer(type, numero, surface, etage, meuble, param);
         if (l == null) {
             System.out.println("Type de logement inconnu : " + type);
             return null;

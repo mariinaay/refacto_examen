@@ -3,9 +3,6 @@ package fr.efrei.residence;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Le parc de logements de la résidence.
- */
 public class Residence {
 
     public static final String NOM = "Résidence Campus Vert";
@@ -25,6 +22,8 @@ public class Residence {
 
     public static List<Logement> logements = new ArrayList<Logement>();
 
+    private static final LogementFactory fabrique = new LogementFactory();
+
     public static void initialiser() {
         logements.clear();
         for (String ligne : CATALOGUE) {
@@ -41,24 +40,8 @@ public class Residence {
             int etage = Integer.parseInt(t[3]);
             boolean meuble = Boolean.parseBoolean(t[4]);
             int param = Integer.parseInt(t[5]);
-            Logement l;
-            switch (type) {
-                case STUDIO:
-                    l = new Studio(numero, surface, etage, meuble);
-                    break;
-                case T1:
-                    l = new T1(numero, surface, etage, meuble);
-                    break;
-                case T2:
-                    l = new T2(numero, surface, etage, meuble, param);
-                    break;
-                case COLOCATION:
-                    l = new Colocation(numero, surface, etage, meuble, param);
-                    break;
-                default:
-                    System.out.println("Type inconnu ignoré : " + type);
-                    continue;
-            }
+
+            Logement l = fabrique.creer(type, numero, surface, etage, meuble, param);
             logements.add(l);
         }
     }
